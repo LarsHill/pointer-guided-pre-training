@@ -1,0 +1,120 @@
+_anchors:
+  max_seq_len: &MAX_SEQ_LEN 512
+  learning_rate: &LEARNING_RATE 5.e-5
+  name: &NAME sequential_text_clf
+  cls_method: &CLS_METHOD sep  # can be "sep" or "cls" depending on which special token hidden state should be used for classification
+
+project_name: pubmed_20k
+out_dir: finetuning/pubmed_20k
+mode: test
+
+train:
+  seed: [40, 41, 42, 43, 44, 45, 46, 47, 48, 49]
+  # select tokenizer and model based on the model you want to use, options:
+  # BERT_{wiki-en}:           bert-base-cased
+  # RoBERTa_{wiki-en}:        bert-base-cased
+  # PointerBERT_{wiki-en}:    bert-base-cased
+  # PointerBERT_{all}:        data/multilingual_all_tokenizer  # (local)
+  # RoBERTa_{all}:            data/multilingual_all_tokenizer  # (local)
+  # PointerBERT_{all-de}:     bert-base-german-dbmdz-cased
+  # PointerSciBERT_{wiki-en}: allenai/scibert_scivocab_uncased
+  hf_tokenizer_name: data/multilingual_all_tokenizer
+  hf_model_name:
+#    - data/pretrained_models/bert_wiki_en/models/best_model_huggingface              # BERT_{wiki-en}:           mlm + nsp
+#    - data/pretrained_models/roberta_wiki_en/models/best_model_huggingface           # RoBERTa_{wiki-en}:        mlm (full sequence)
+#    - data/pretrained_models/pointer_bert_wiki_en/models/best_model_huggingface      # PointerBERT_{wiki-en}:    so + pointer
+    - data/pretrained_models/pointer_bert_all/models/best_model_huggingface          # PointerBERT_{all}:        so + pointer
+#    - data/pretrained_models/roberta_all/models/best_model_huggingface               # RoBERTa_{all}:            mlm (full sequence)
+#    - data/pretrained_models/pointer_bert_all_de/models/best_model_huggingface       # PointerBERT_{all-de}:     so + pointer
+#    - data/pretrained_models/pointer_scibert_wiki_en/models/best_model_huggingface   # PointerSciBERT_{wiki-en}: so + pointer
+  _num_workers: 0
+  _get_data_statistics: True
+
+  dataset_params:
+    base_dir: data/finetuning/
+    train_paths:
+      -
+        - pubmed_20k/train.jsonl
+
+    eval_paths:
+      -
+#        - pubmed_20k/dev.jsonl
+        - pubmed_20k/test.jsonl
+    train_batch_size: 4
+    eval_batch_size: 8
+    _shuffle_documents: True
+    _drop_last: False
+    _buffer_size: 1000
+
+  iterator_params:
+    max_seq_len: *MAX_SEQ_LEN
+    max_segments_per_sample: null
+    drop_short_samples: False
+    combine_k_segments: null
+
+  collator_params:
+    name: *NAME
+    cls_method: *CLS_METHOD
+
+
+  model_params:
+    name: *NAME
+    cls_method: *CLS_METHOD
+    classifier_dropout: 0.2
+    decoding_type: linear
+    label_embedding_dim: null
+    init_zeros: False
+    use_sep_pooler: False
+    use_sep_pos_embedding: True
+    use_pointer: False
+    _is_pretrained: True
+    use_loss_weighting: False
+
+  training_params:
+    optimizer:
+      type_: adamW
+      lr: *LEARNING_RATE
+      weight_decay: 0.01
+
+    lr_scheduler:
+      - type_: 'lin_warmup'
+        interval: 'step'
+        lr_warmup: 0.1
+
+    _metric_params:
+      metrics:
+        -
+          - name: loss
+
+          - name: f1-micro
+            type: f1
+            kwargs:
+              task: multiclass
+              num_classes: null
+              ignore_index: -100
+              average: micro
+
+          - name: f1-macro
+            type: f1
+            kwargs:
+              task: multiclass
+              num_classes: null
+              ignore_index: -100
+              average: macro
+
+    trainer:
+      max_epochs: 2
+      accumulate_grad_batches: 1
+      gradient_clip_val: 1
+      precision: 16-mixed
+      log_every_n_steps: 200
+      val_check_interval: 1.
+      num_sanity_val_steps: 0
+      _enable_checkpointing: False
+
+    callbacks:
+      monitor_var: "valid-f1-micro-epoch"
+      monitor_var_mode: "max"
+      save_top_k: 0  # set to 0 for no checkpoint saving
+
+eval: {}

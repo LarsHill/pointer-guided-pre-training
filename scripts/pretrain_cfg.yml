@@ -1,0 +1,138 @@
+_anchors:
+  max_seq_len: &MAX_SEQ_LEN 512
+  learning_rate: &LEARNING_RATE 1.e-4
+  name: &NAME language_modeling
+
+project_name: lm_pretraining
+out_dir: pretraining
+mode: train
+
+train:
+  seed: 42
+  # select the tokenizer and model name based on the model you want to train, options:
+  # BERT_{wiki-en}:           bert-base-cased
+  # RoBERTa_{wiki-en}:        bert-base-cased
+  # PointerBERT_{wiki-en}:    bert-base-cased
+  # PointerBERT_{all}:        data/multilingual_all_tokenizer  # (local)
+  # RoBERTa_{all}:            data/multilingual_all_tokenizer  # (local)
+  # PointerBERT_{all-de}:     bert-base-german-dbmdz-cased
+  # PointerSciBERT_{wiki-en}: allenai/scibert_scivocab_uncased
+  hf_tokenizer_name: bert-base-german-dbmdz-cased
+  hf_model_name: bert-base-german-dbmdz-cased
+  _num_workers: 1
+  _get_data_statistics: False
+  dataset_params:
+    # base directory for pre-training datasets (absolute path)
+    # the actual datasets cannot be shared, but the structure can be inferred from the loading functions in llm/data/data_iterators.py
+    # the wikipedia dataset can be recreated (see README.md)
+    base_dir: /data/datasets
+    train_paths:
+      -
+        - wiki/enwiki_train.jsonl.gz
+        - wiki/dewiki_train.jsonl.gz
+        - banz/banz_train.jsonl.gz
+        - news-de/news_de_train.jsonl.gz
+        - news-de/news_en_train.jsonl.gz
+    eval_paths:
+      -
+        - wiki/enwiki_val.jsonl.gz
+        - wiki/dewiki_val.jsonl.gz
+        - banz/banz_val.jsonl.gz
+        - news-en/news_de_val.jsonl.gz
+        - news-en/news_en_val.jsonl.gz
+    train_batch_size: 16
+    eval_batch_size: 16
+    _shuffle_documents: True
+    _drop_last: False
+    _buffer_size: 1000
+
+  iterator_params:
+    max_seq_len: *MAX_SEQ_LEN
+    max_segments_per_sample: null
+    drop_short_samples: False
+    combine_k_segments: null
+
+  collator_params:
+    # mlm + so (masked language modeling + segment ordering) -> OUR Model
+    - name: *NAME
+      mlm_probability: 0.15
+      mlm_apply_80_10_10: False
+      segment_ordering: True  # actual segment order prediction with pointer net
+      next_sentence_prediction: False  # classic nsp task based on cls token
+
+    # uncomment one of these tasks to train a model with a different objective (see paper)
+#    # mlm + nsp
+#    - mlm_probability: 0.15
+#      mlm_apply_80_10_10: False
+#      segment_ordering: False
+#      next_sentence_prediction: True
+#
+#    # mlm only
+#    - name: *NAME
+#      mlm_probability: 0.15
+#      mlm_apply_80_10_10: False
+#      segment_ordering: False  # actual segment order prediction with pointer net
+#      next_sentence_prediction: False  # classic nsp task based on cls token
+
+  model_params:
+    name: *NAME
+    # if true, we load the pre-trained checkpoint from huggingface hub, if false we train from scratch
+    is_pretrained: True
+    max_position_embeddings: *MAX_SEQ_LEN
+    # set the vocab_size field for a new model with the custom tokenizer: transformers_bert_tokenizer
+#    vocab_size: 100_000
+    hidden_size: 768
+    nsp_so_loss_scaling: null
+    use_sep_pooler: False
+    use_sep_pos_embedding: True
+    seg_head_type: pointer
+    mlm_only_steps: null
+    pointer_params:
+      mask_predicted_positions: False
+      use_cross_attn_ptr_net: True
+
+  training_params:
+    optimizer:
+      type_: adamW
+      lr: *LEARNING_RATE
+      weight_decay: 0.01
+
+    lr_scheduler:
+      - type_: 'lin_warmup'
+        interval: 'step'
+        lr_warmup: 0.1
+
+    _metric_params:
+      - metrics:
+        -
+          - name: loss--mlm
+            type: loss
+          - name: loss--so
+            type: loss
+          - name: acc--mlm
+            type: acc
+            kwargs:
+              mode: macro
+          - name: acc--so
+            type: acc
+            kwargs:
+              mode: macro
+          - name: emd--so
+            type: emd
+
+    trainer:
+      # the maximum number or pre-training steps
+      max_steps: 1.e+5  # 2.e+5
+      accumulate_grad_batches: 4
+      gradient_clip_val: 1
+      precision: 16-mixed
+      log_every_n_steps: 200
+      val_check_interval: 5000
+      num_sanity_val_steps: 0
+      _enable_checkpointing: True
+      limit_val_batches: 5000
+    callbacks:
+      monitor_var:
+        - "valid-acc--mlm-epoch"
+      monitor_var_mode: "max"
+      save_top_k: 1
