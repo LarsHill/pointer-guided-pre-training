@@ -75,7 +75,7 @@ If you use this code or the pre-trained models in your research, please cite the
 ```bibtex
 @inproceedings{hillebrand2024,
   title={Pointer-Guided Pre-Training: Infusing Large Language Models with Paragraph-Level Contextual Awareness},
-  author={Hillebrand, Lars and Pradhan, Prabhupad and Bauckhage Christian and Sifa, Rafet},
+  author={Hillebrand, Lars and Pradhan, Prabhupad and Bauckhage, Christian and Sifa, Rafet},
   booktitle={Proc. ECMLPKDD},
   year={2024}
 }
