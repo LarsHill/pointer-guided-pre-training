@@ -1,6 +1,8 @@
 # Pointer-Guided Pre-Training
 
-This repo contains the code and fine-tuning data for the paper "Pointer-Guided Pre-Training: Infusing Large Language Models with Paragraph-Level Contextual Awareness"
+This repo contains the code and fine-tuning data for the paper "Pointer-Guided Pre-Training: Infusing Large Language Models with Paragraph-Level Contextual Awareness".
+The paper is accepted for publication at ECML-PKDD 2024.
+A preprint can be found on [Arxiv](https://arxiv.org/abs/2406.04156).
 
 ## Installation
 
